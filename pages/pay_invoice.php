@@ -3,8 +3,8 @@
 // API Function to get access token
 function getAccessToken()
 {
-    $consumerKey = "5dhOIuyE9ETyuGsdWI8xPfkbfwe1954Z";
-    $consumerSecret = "YdW8Fo4PneAu3stN";
+    $consumerKey = "";
+    $consumerSecret = "";
 
     $url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
 
@@ -47,7 +47,7 @@ function sendStkPush($token)
     $timestamp = date('YmdHis');
 
     $shortCode = "512900"; // Your Safaricom Short Code
-    $passkey = "b72bd2dc2a1c7be6f894c2fe72acf81427e0dee3007b47c5029b808ffe0dec43"; // Your Safaricom Passkey
+    $passkey = ""; // Your Safaricom Passkey
 
     $stk_password = base64_encode($shortCode . $passkey . $timestamp);
 
