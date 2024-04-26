@@ -1,4 +1,97 @@
 <?php
+
+// API Function to get access token
+function getAccessToken()
+{
+    $consumerKey = "5dhOIuyE9ETyuGsdWI8xPfkbfwe1954Z";
+    $consumerSecret = "YdW8Fo4PneAu3stN";
+
+    $url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials";
+
+    try {
+        $encodedCredentials = base64_encode($consumerKey . ':' . $consumerSecret);
+
+        $headers = [
+            'Authorization: Basic ' . $encodedCredentials,
+            'Content-Type: application/json'
+        ];
+
+        // Initialize cURL session and set options
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        // Send the request and parse the response
+        $response = json_decode(curl_exec($ch), true);
+
+        // Check for errors and return the access token
+        if (curl_errno($ch)) {
+            throw new Exception('Failed to get access token: ' . curl_error($ch));
+        } else if (isset($response['access_token'])) {
+            $token = $response['access_token'];
+            curl_close($ch);
+            return sendStkPush($token); // Call sendStkPush with the obtained token
+        } else {
+            throw new Exception('Failed to get access token: ' . $response['error_description']);
+        }
+
+    } catch (Exception $error) {
+        throw new Exception('Failed to get access token.');
+    }
+}
+
+// API Function to initiate STK push
+function sendStkPush($token)
+{
+    $timestamp = date('YmdHis');
+
+    $shortCode = "512900"; // Your Safaricom Short Code
+    $passkey = "b72bd2dc2a1c7be6f894c2fe72acf81427e0dee3007b47c5029b808ffe0dec43"; // Your Safaricom Passkey
+
+    $stk_password = base64_encode($shortCode . $passkey . $timestamp);
+
+
+    $url = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest";
+
+    $headers = [
+        'Authorization: Bearer ' . $token,
+        'Content-Type: application/json'
+    ];
+
+    $requestBody = array(
+        "BusinessShortCode" => $shortCode,
+        "Password" => $stk_password,
+        "Timestamp" => $timestamp,
+        "TransactionType" => "CustomerPayBillOnline", //till "CustomerBuyGoodsOnline"
+        "Amount" => $_POST['amount'], // Fetching the amount entered by the user
+        "PartyA" => "254721548569",
+        "PartyB" => $shortCode,
+        "PhoneNumber" => $_POST['payer_phone'], // Fetching the phone number entered by the user
+        "CallBackURL" => "https://yourwebsite.co.ke/callbackurl",
+        "AccountReference" => "Telemedicine",
+        "TransactionDesc" => "KijabeTele"
+    );
+
+    try {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($requestBody));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        echo $response;
+        return $response;
+    } catch (Exception $e) {
+        echo 'Error: ', $e->getMessage(), "
+";
+    }
+}
+
+// Your existing PHP code continues here
+
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
@@ -57,7 +150,7 @@ if ($invoice = $result->fetch_assoc()) {
             $mail->Port = 587;
 
             $mail->setFrom('telemed@kijabehospital.org', 'Telemedicine Services');
-            $mail->addAddress($_POST['payer_email'], 'User'); // Add recipient from form
+
             $mail->addAddress('ictmgr@kijabehospital.org', 'Correspondent'); // Additional recipient
 
             $mail->isHTML(true);
@@ -70,7 +163,10 @@ if ($invoice = $result->fetch_assoc()) {
             echo 'Message could not be sent. Mailer Error: ', $mail->ErrorInfo;
         }
 
-        header('Location: payment_success.php');
+        header('Location: dashboard.php');
+
+        // Call getAccessToken to initiate the process
+        getAccessToken(); // Call the function to initiate the STK push
         exit();
     }
 } else {
@@ -80,92 +176,98 @@ if ($invoice = $result->fetch_assoc()) {
 
 ?>
 
-
 <!doctype html>
 <html lang="en">
 
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AIC Kijabe Hospital Telemedicine</title>
-  <link rel="shortcut icon" type="image/png" href="assets/images/logos/favicon.png" />
-  <link rel="stylesheet" href="assets/css/styles.min.css" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AIC Kijabe Hospital Telemedicine</title>
+    <link rel="shortcut icon" type="image/png" href="assets/images/logos/favicon.png" />
+    <link rel="stylesheet" href="assets/css/styles.min.css" />
 </head>
 
 <body>
-  <!--  Body Wrapper -->
-  <?php include '../includes/sidebar.php';?>
-      </div>
-      <!-- End Sidebar scroll-->
+    <!--  Body Wrapper -->
+    <?php include '../includes/sidebar.php'; ?>
+    </div>
+    <!-- End Sidebar scroll-->
     </aside>
     <!--  Sidebar End -->
     <!--  Main wrapper -->
     <div class="body-wrapper">
-<?php include '../includes/head.php';?>
-      <div class="container-fluid">
-<!-- Doctor Schedules Section -->
-<div class="row">
-    <div class="col-lg-8 d-flex align-items-stretch">
-        <div class="card w-100">
-            <div class="card-body">
-<div class="container">
-        <h1>Pay Invoice</h1>
-        <?php if (isset($invoice)): ?>
-            <div class="invoice-details">
-                <p><strong>Invoice ID:</strong> <?= htmlspecialchars($invoice['invoice_id']) ?></p>
-                <p><strong>Amount Due:</strong>KE <?= htmlspecialchars($invoice['amount']) ?></p>
-                <p><strong>Status:</strong> <?= htmlspecialchars($invoice['status']) ?></p>
-            </div>
+        <?php include '../includes/head.php'; ?>
+        <div class="container-fluid">
+            <!-- Doctor Schedules Section -->
+            <div class="row">
+                <div class="col-lg-8 d-flex align-items-stretch">
+                    <div class="card w-100">
+                        <div class="card-body">
+                            <div class="container">
+                                <h1>Pay Invoice</h1>
+                                <?php if (isset($invoice)): ?>
+                                    <div class="invoice-details">
+                                        <p><strong>Invoice ID:</strong> <?= htmlspecialchars($invoice['invoice_id']) ?></p>
+                                        <p><strong>Amount Due:</strong>KE <?= htmlspecialchars($invoice['amount']) ?></p>
+                                        <p><strong>Status:</strong> <?= htmlspecialchars($invoice['status']) ?></p>
+                                    </div>
 
-            <?php if ($invoice['status'] !== 'Paid'): ?>
-                <form action="pay_invoice.php" method="post">
-                    <input type="hidden" name="invoice_id" value="<?= htmlspecialchars($invoiceId) ?>">
-                    <input type="hidden" name="amount" value="<?= htmlspecialchars($invoice['amount']) ?>">
-                    <!-- Payer Phone Input -->
-                    <div class="mb-3">
-                        <label for="payerPhone" class="form-label">Payer Phone:</label>
-                        <input type="text" class="form-control" id="payerPhone" name="payer_phone" required placeholder="Enter your phone number">
+                                    <?php if ($invoice['status'] !== 'Paid'): ?>
+                                        <form action="pay_invoice.php" method="post">
+                                            <input type="hidden" name="invoice_id" value="<?= htmlspecialchars($invoiceId) ?>">
+                                            <!-- Amount Input -->
+                                            <div class="mb-3">
+                                                <label for="amount" class="form-label">Amount:</label>
+                                                <input type="text" class="form-control" id="amount" name="amount" required
+                                                    placeholder="Enter the amount">
+                                            </div>
+                                            <!-- Payer Phone Input -->
+                                            <div class="mb-3">
+                                                <label for="payerPhone" class="form-label">Payer Phone:</label>
+                                                <input type="text" class="form-control" id="payerPhone" name="payer_phone"
+                                                    required placeholder="Enter your phone number">
+                                            </div>
+
+                                            <!-- Confirmation Code Input -->
+                                            <div class="mb-3">
+                                                <label for="confirmationCode" class="form-label">Confirmation Code:</label>
+                                                <input type="text" class="form-control" id="confirmationCode"
+                                                    name="confirmation_code" required placeholder="Enter confirmation code">
+                                            </div>
+                                            <button type="submit" name="pay_now" class="btn btn-primary">Pay Now</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <p>This invoice has already been paid.</p>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <p>Invoice not found or has been removed.</p>
+                                <?php endif; ?>
+                            </div>
+
+                        </div>
                     </div>
 
-                    <!-- Confirmation Code Input -->
-                    <div class="mb-3">
-                        <label for="confirmationCode" class="form-label">Confirmation Code:</label>
-                        <input type="text" class="form-control" id="confirmationCode" name="confirmation_code" required placeholder="Enter confirmation code">
+
+
+
+
+
+
+
                 </div>
-                    <button type="submit" name="pay_now" class="btn btn-primary">Pay Now</button>
-                </form>
-            <?php else: ?>
-                <p>This invoice has already been paid.</p>
-            <?php endif; ?>
-        <?php else: ?>
-            <p>Invoice not found or has been removed.</p>
-        <?php endif; ?>
-    </div>
-              
-          </div>
+
+            </div>
+            <?php include '../includes/foot.php'; ?>
         </div>
-        
-
-
-
-
-
-
-
-</div>
-
-        </div>
-        <?php include '../includes/foot.php';?>
-      </div>
     </div>
-  </div>
-  <script src="assets/libs/jquery/dist/jquery.min.js"></script>
-  <script src="assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="assets/js/sidebarmenu.js"></script>
-  <script src="assets/js/app.min.js"></script>
-  <script src="assets/libs/apexcharts/dist/apexcharts.min.js"></script>
-  <script src="assets/libs/simplebar/dist/simplebar.js"></script>
-  <script src="assets/js/dashboard.js"></script>
+    </div>
+    <script src="assets/libs/jquery/dist/jquery.min.js"></script>
+    <script src="assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/sidebarmenu.js"></script>
+    <script src="assets/js/app.min.js"></script>
+    <script src="assets/libs/apexcharts/dist/apexcharts.min.js"></script>
+    <script src="assets/libs/simplebar/dist/simplebar.js"></script>
+    <script src="assets/js/dashboard.js"></script>
 </body>
 
 </html>
